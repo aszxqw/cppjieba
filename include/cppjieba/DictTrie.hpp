@@ -68,33 +68,7 @@ class DictTrie {
   double GetMinWeight() const {
     return min_weight_;
   }
-
- private:
-  void Init(const string& dict_path, const string& user_dict_paths, UserWordWeightOption user_word_weight_opt) {
-    LoadDict(dict_path);
-    freq_sum_ = CalcFreqSum(static_node_infos_);
-    CalculateWeight(static_node_infos_, freq_sum_);
-    SetStaticWordWeights(user_word_weight_opt);
-
-    if (user_dict_paths.size()) {
-      LoadUserDict(user_dict_paths);
-    }
-    Shrink(static_node_infos_);
-    CreateTrie(static_node_infos_);
-  }
   
-  void CreateTrie(const vector<DictUnit>& dictUnits) {
-    assert(dictUnits.size());
-    vector<Unicode> words;
-    vector<const DictUnit*> valuePointers;
-    for (size_t i = 0 ; i < dictUnits.size(); i ++) {
-      words.push_back(dictUnits[i].word);
-      valuePointers.push_back(&dictUnits[i]);
-    }
-
-    trie_ = new Trie(words, valuePointers);
-  }
-
   void LoadUserDict(const string& filePaths) {
     vector<string> files = limonp::Split(filePaths, "|;");
     size_t lineno = 0;
@@ -134,6 +108,33 @@ class DictTrie {
       }
     }
   }
+
+ private:
+  void Init(const string& dict_path, const string& user_dict_paths, UserWordWeightOption user_word_weight_opt) {
+    LoadDict(dict_path);
+    freq_sum_ = CalcFreqSum(static_node_infos_);
+    CalculateWeight(static_node_infos_, freq_sum_);
+    SetStaticWordWeights(user_word_weight_opt);
+
+    if (user_dict_paths.size()) {
+      LoadUserDict(user_dict_paths);
+    }
+    Shrink(static_node_infos_);
+    CreateTrie(static_node_infos_);
+  }
+  
+  void CreateTrie(const vector<DictUnit>& dictUnits) {
+    assert(dictUnits.size());
+    vector<Unicode> words;
+    vector<const DictUnit*> valuePointers;
+    for (size_t i = 0 ; i < dictUnits.size(); i ++) {
+      words.push_back(dictUnits[i].word);
+      valuePointers.push_back(&dictUnits[i]);
+    }
+
+    trie_ = new Trie(words, valuePointers);
+  }
+
 
   bool MakeNodeInfo(DictUnit& node_info,
         const string& word, 
