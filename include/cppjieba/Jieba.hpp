@@ -32,37 +32,48 @@ class Jieba {
   }; // struct LocWord
 
   void Cut(const string& sentence, vector<string>& words, bool hmm = true) const {
+    if(sentence.empty()) return;
     mix_seg_.Cut(sentence, words, hmm);
   }
   void Cut(const string& sentence, vector<Word>& words, bool hmm = true) const {
+    if(sentence.empty()) return;
     mix_seg_.Cut(sentence, words, hmm);
   }
   void CutAll(const string& sentence, vector<string>& words) const {
+    if(sentence.empty()) return;
     full_seg_.Cut(sentence, words);
   }
   void CutAll(const string& sentence, vector<Word>& words) const {
+    if(sentence.empty()) return;
     full_seg_.Cut(sentence, words);
   }
   void CutForSearch(const string& sentence, vector<string>& words, bool hmm = true) const {
+    if(sentence.empty()) return;
     query_seg_.Cut(sentence, words, hmm);
   }
   void CutForSearch(const string& sentence, vector<Word>& words, bool hmm = true) const {
+    if(sentence.empty()) return;
     query_seg_.Cut(sentence, words, hmm);
   }
   void CutHMM(const string& sentence, vector<string>& words) const {
+    if(sentence.empty()) return;
     hmm_seg_.Cut(sentence, words);
   }
   void CutHMM(const string& sentence, vector<Word>& words) const {
+    if(sentence.empty()) return;
     hmm_seg_.Cut(sentence, words);
   }
   void CutSmall(const string& sentence, vector<string>& words, size_t max_word_len) const {
+    if(sentence.empty()) return;
     mp_seg_.Cut(sentence, words, max_word_len);
   }
   void CutSmall(const string& sentence, vector<Word>& words, size_t max_word_len) const {
+    if(sentence.empty()) return;
     mp_seg_.Cut(sentence, words, max_word_len);
   }
   
   void Tag(const string& sentence, vector<pair<string, string> >& words) const {
+    if(sentence.empty()) return;
     mix_seg_.Tag(sentence, words);
   }
   string LookupTag(const string &str) const {
