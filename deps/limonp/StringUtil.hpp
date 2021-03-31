@@ -5,6 +5,7 @@
 #ifndef LIMONP_STR_FUNCTS_H
 #define LIMONP_STR_FUNCTS_H
 #include <fstream>
+#include <functional>
 #include <iostream>
 #include <string>
 #include <vector>
@@ -84,12 +85,14 @@ inline bool IsSpace(unsigned c) {
 }
 
 inline std::string& LTrim(std::string &s) {
-  s.erase(s.begin(), std::find_if(s.begin(), s.end(), std::not1(std::ptr_fun<unsigned, bool>(IsSpace))));
+  static std::function<bool(unsigned)> IsSpace = [](unsigned c) { return c > 0xff ? false : std::isspace(c & 0xff); };
+  s.erase(s.begin(), std::find_if(s.begin(), s.end(), std::not1(IsSpace)));
   return s;
 }
 
 inline std::string& RTrim(std::string &s) {
-  s.erase(std::find_if(s.rbegin(), s.rend(), std::not1(std::ptr_fun<unsigned, bool>(IsSpace))).base(), s.end());
+  static std::function<bool(unsigned)> IsSpace = [](unsigned c) { return c > 0xff ? false : std::isspace(c & 0xff); };
+  s.erase(std::find_if(s.rbegin(), s.rend(), std::not1(IsSpace)).base(), s.end());
   return s;
 }
 
@@ -98,12 +101,14 @@ inline std::string& Trim(std::string &s) {
 }
 
 inline std::string& LTrim(std::string & s, char x) {
-  s.erase(s.begin(), std::find_if(s.begin(), s.end(), std::not1(std::bind2nd(std::equal_to<char>(), x))));
+  std::function<bool(char)> EqualToX = [x](char c) { return c == x; };
+  s.erase(s.begin(), std::find_if(s.begin(), s.end(), std::not1(EqualToX)));
   return s;
 }
 
 inline std::string& RTrim(std::string & s, char x) {
-  s.erase(std::find_if(s.rbegin(), s.rend(), std::not1(std::bind2nd(std::equal_to<char>(), x))).base(), s.end());
+  std::function<bool(char)> EqualToX = [x](char c) { return c == x; };
+  s.erase(std::find_if(s.rbegin(), s.rend(), std::not1(EqualToX)).base(), s.end());
   return s;
 }
 
