@@ -24,6 +24,9 @@ const double MAX_DOUBLE = 3.14e+100;
 const size_t DICT_COLUMN_NUM = 3;
 const char* const UNKNOWN_TAG = "";
 
+#define CACHE_FILE         "Cache_File.mc"
+#define CACHE_DATA_MAX_LEN 1024
+
 class DictTrie {
  public:
   enum UserWordWeightOption {
@@ -158,15 +161,21 @@ class DictTrie {
 
  private:
   void Init(const string& dict_path, const string& user_dict_paths, UserWordWeightOption user_word_weight_opt) {
-    LoadDict(dict_path);
-    freq_sum_ = CalcFreqSum(static_node_infos_);
-    CalculateWeight(static_node_infos_, freq_sum_);
-    SetStaticWordWeights(user_word_weight_opt);
+	if(UnSerialization() == false)
+	{
+		LoadDict(dict_path);
+		freq_sum_ = CalcFreqSum(static_node_infos_);
+		CalculateWeight(static_node_infos_, freq_sum_);
+		SetStaticWordWeights(user_word_weight_opt);
 
-    if (user_dict_paths.size()) {
-      LoadUserDict(user_dict_paths);
-    }
-    Shrink(static_node_infos_);
+		if (user_dict_paths.size()) {
+		  LoadUserDict(user_dict_paths);
+		}
+		Shrink(static_node_infos_);
+
+		Serialization();
+	}
+
     CreateTrie(static_node_infos_);
   }
   
@@ -255,6 +264,202 @@ class DictTrie {
       assert(node_info.weight > 0.0);
       node_info.weight = log(double(node_info.weight)/sum);
     }
+  }
+
+  int SerializationDictUnit(char* data_temp_, size_t data_max_size_, DictUnit& _dict_unit)
+  {
+	  size_t pos_ = 0;
+
+	  size_t word_size_ = _dict_unit.word.size();
+	  if(data_max_size_ > pos_ + sizeof(int))
+	  {
+		memcpy(&data_temp_[pos_], (char *)&word_size_, sizeof(int));
+		pos_ += sizeof(int);
+	  }
+
+	  cppjieba::Unicode unicode_ = _dict_unit.word;
+	  for(size_t i = 0; i < word_size_; i++)
+	  {
+		  if(data_max_size_ > pos_ + sizeof(Rune))
+		  {
+			memcpy(&data_temp_[pos_], (char *)&unicode_[i], sizeof(Rune));
+			pos_ += sizeof(Rune);
+		  }
+	  }
+
+	  if(data_max_size_ > pos_ + sizeof(_dict_unit.weight))
+	  {
+		memcpy(&data_temp_[pos_], (char *)&_dict_unit.weight, sizeof(_dict_unit.weight));
+		pos_ += sizeof(_dict_unit.weight);
+	  }
+
+	  short tag_len_ = _dict_unit.tag.length();
+	  if(data_max_size_ > pos_ + sizeof(short) + tag_len_)
+	  {
+		memcpy(&data_temp_[pos_], (char *)&tag_len_, sizeof(short));
+		pos_ += sizeof(short);
+		memcpy(&data_temp_[pos_], (char *)_dict_unit.tag.c_str(), tag_len_);
+		pos_ += tag_len_;
+	  }
+
+	  return (int)pos_;
+  }
+
+  bool Serialization()
+  {
+	  //序列化当前内存结构为文件，增加读效率
+	  //因为vector是连续的，有一种简单的方法是直接将内存地址映射成文件，但是考虑到缓冲可移植的问题，保证在不同的机器上缓冲层可用
+	  //所以使用了逐个变量序列化的方式。
+	  int data_temp_max_len_ = CACHE_DATA_MAX_LEN;
+	  char data_temp_[CACHE_DATA_MAX_LEN] = {'\0'};
+
+	  FILE* cache_file_ = fopen(CACHE_FILE, "wb");
+	  if(NULL == cache_file_)
+	  {
+		  XLOG(ERROR) << "file cache file create (" << CACHE_FILE << ") failed.";
+		  return false;
+	  }
+
+	  //序列化基本元素
+	  memcpy(data_temp_, (char* )&freq_sum_, sizeof(double));
+	  fwrite(data_temp_, sizeof(char), sizeof(double), cache_file_);
+	  memcpy(data_temp_, (char* )&min_weight_, sizeof(double));
+	  fwrite(data_temp_, sizeof(char), sizeof(double), cache_file_);
+	  memcpy(data_temp_, (char* )&max_weight_, sizeof(double));
+	  fwrite(data_temp_, sizeof(char), sizeof(double), cache_file_);
+	  memcpy(data_temp_, (char* )&median_weight_, sizeof(double));
+	  fwrite(data_temp_, sizeof(char), sizeof(double), cache_file_);
+	  memcpy(data_temp_, (char* )&user_word_default_weight_, sizeof(double));
+	  fwrite(data_temp_, sizeof(char), sizeof(double), cache_file_);
+	  fflush(cache_file_);
+
+	  int info_size_ = static_node_infos_.size();
+	  memcpy(data_temp_, (char* )&info_size_, sizeof(int));
+	  fwrite(data_temp_, sizeof(char), sizeof(int), cache_file_);
+	  for(int i = 0; i < info_size_; i++)
+	  {
+		memset(data_temp_, 0, CACHE_DATA_MAX_LEN);
+		int data_len_ = SerializationDictUnit(data_temp_, (size_t)data_temp_max_len_, static_node_infos_[i]);
+		fwrite(data_temp_, sizeof(char), data_len_, cache_file_);
+	  }
+	  fflush(cache_file_);
+
+	  int active_info_size_ = active_node_infos_.size();
+	  memcpy(data_temp_, (char* )&active_info_size_, sizeof(int));
+	  fwrite(data_temp_, sizeof(char), sizeof(int), cache_file_);
+	  for(int i = 0; i < active_info_size_; i++)
+	  {
+		 int data_len_ = SerializationDictUnit(data_temp_, (size_t)data_temp_max_len_, active_node_infos_[i]);
+		 fwrite(data_temp_, sizeof(char), data_len_, cache_file_);
+	  }
+	  fflush(cache_file_);
+
+	  int single_chinese_word_size_ = user_dict_single_chinese_word_.size();
+	  memcpy(data_temp_, (char* )&single_chinese_word_size_, sizeof(int));
+	  fwrite(data_temp_, sizeof(char), sizeof(int), cache_file_);
+	  for (unordered_set<Rune>::iterator p = user_dict_single_chinese_word_.begin(); p != user_dict_single_chinese_word_.end(); ++p)
+	  {
+		 Rune& rune_ = (Rune& )*p;
+		 memcpy(data_temp_, (char* )&rune_, sizeof(Rune));
+		 fwrite(data_temp_, sizeof(char), sizeof(Rune), cache_file_);
+	  }
+	  fflush(cache_file_);
+
+	  fclose(cache_file_);
+	  return true;
+  }
+
+  bool UnSerializationDictUnit(FILE* cache_file_, DictUnit& dict_unit_)
+  {
+	  int data_temp_max_len_ = CACHE_DATA_MAX_LEN;
+	  char data_temp_[CACHE_DATA_MAX_LEN] = {'\0'};
+
+	  size_t word_size_ = 0;
+	  fread(data_temp_, sizeof(char), sizeof(int), cache_file_);
+	  memcpy((char* )&word_size_, data_temp_, sizeof(int));
+	  for(size_t i = 0; i < word_size_; i++)
+	  {
+		  Rune rune_;
+		  fread(data_temp_, sizeof(char), sizeof(Rune), cache_file_);
+		  memcpy((char* )&rune_, data_temp_, sizeof(Rune));
+		  dict_unit_.word.push_back(rune_);
+	  }
+
+	  fread(data_temp_, sizeof(char), sizeof(dict_unit_.weight), cache_file_);
+	  memcpy((char* )&dict_unit_.weight, data_temp_, sizeof(dict_unit_.weight));
+
+	  short tag_len_ = 0;
+	  fread(data_temp_, sizeof(char), sizeof(short), cache_file_);
+	  memcpy((char* )&tag_len_, data_temp_, sizeof(short));
+	  if(tag_len_ < data_temp_max_len_)
+	  {
+		fread(data_temp_, sizeof(char), tag_len_, cache_file_);
+		data_temp_[tag_len_] = '\0';
+		dict_unit_.tag = (string)data_temp_;
+	  }
+
+	  return true;
+  }
+
+  bool UnSerialization()
+  {
+	  //反序列化
+	  char data_temp_[CACHE_DATA_MAX_LEN] = {'\0'};
+
+	  FILE* cache_file_ = fopen(CACHE_FILE, "rb");
+	  if(NULL == cache_file_)
+	  {
+		  //XLOG(ERROR) << "file cache file read (" << CACHE_FILE << ") failed.";
+		  return false;
+	  }
+
+	  fread(data_temp_, sizeof(char), sizeof(double), cache_file_);
+	  memcpy((char* )&freq_sum_, data_temp_, sizeof(double));
+	  fread(data_temp_, sizeof(char), sizeof(double), cache_file_);
+	  memcpy((char* )&min_weight_, data_temp_, sizeof(double));
+	  fread(data_temp_, sizeof(char), sizeof(double), cache_file_);
+	  memcpy((char* )&max_weight_, data_temp_, sizeof(double));
+	  fread(data_temp_, sizeof(char), sizeof(double), cache_file_);
+	  memcpy((char* )&median_weight_, data_temp_, sizeof(double));
+	  fread(data_temp_, sizeof(char), sizeof(double), cache_file_);
+	  memcpy((char* )&user_word_default_weight_, data_temp_, sizeof(double));
+
+	  int info_size_ = 0;
+	  fread(data_temp_, sizeof(char), sizeof(int), cache_file_);
+	  memcpy((char* )&info_size_, data_temp_, sizeof(int));
+
+	  
+	  for(int i = 0; i < info_size_; i++)
+	  {
+		  DictUnit dict_unit_;
+		  UnSerializationDictUnit(cache_file_, dict_unit_);
+		  static_node_infos_.push_back(dict_unit_);
+	  }
+
+	  int active_info_size_ = 0;
+	  fread(data_temp_, sizeof(char), sizeof(int), cache_file_);
+	  memcpy((char* )&active_info_size_, data_temp_, sizeof(int));
+	  for(int i = 0; i < active_info_size_; i++)
+	  {
+		  DictUnit dict_unit_;
+		  UnSerializationDictUnit(cache_file_, dict_unit_);
+		  active_node_infos_.push_back(dict_unit_);
+	  }
+
+	  int single_chinese_word_size_ = 0;
+	  fread(data_temp_, sizeof(char), sizeof(int), cache_file_);
+	  memcpy((char* )&single_chinese_word_size_, data_temp_, sizeof(int));
+	  for(int i = 0; i < single_chinese_word_size_; i++)
+	  {
+		  Rune rune_;
+		  fread(data_temp_, sizeof(char), sizeof(Rune), cache_file_);
+		  memcpy((char* )&rune_, data_temp_, sizeof(Rune));
+		  user_dict_single_chinese_word_.insert(rune_);
+	  }
+
+	  fclose(cache_file_);
+
+	  return true;
   }
 
   void Shrink(vector<DictUnit>& units) const {
